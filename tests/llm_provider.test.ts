@@ -4,6 +4,7 @@ import {
   LLMProviderError,
   telemetry,
   llmCache,
+  llm,
   cosineSimilarity,
   type LLMResponse,
   type LLMToolCall,
@@ -129,5 +130,75 @@ describe("Cosine Similarity & Cache Key", () => {
     assert.strictEqual(key1, key2);
     assert.strictEqual(typeof key1, "string");
     assert.strictEqual(key1.length, 64); // SHA-256 hex
+  });
+});
+
+describe("LLMManager Model Resolution", () => {
+  it("resolves Anthropic default model instead of OpenAI profile model when provider is anthropic", async () => {
+    const origKey = process.env.ANTHROPIC_API_KEY;
+    const origFetch = globalThis.fetch;
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+
+    let interceptedModel: string | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      interceptedModel = body.model;
+      return new Response(
+        JSON.stringify({
+          content: [{ text: "mock anthropic reply" }],
+          usage: { input_tokens: 10, output_tokens: 20 },
+          model: body.model,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    try {
+      const res = await llm.generate([{ role: "user", content: "hello anthropic" }], {
+        provider: "anthropic",
+        useCache: false,
+      });
+
+      assert.strictEqual(res.provider, "anthropic");
+      assert.strictEqual(interceptedModel, "claude-3-5-haiku-latest");
+      assert.notStrictEqual(interceptedModel, "gpt-4o-mini");
+    } finally {
+      process.env.ANTHROPIC_API_KEY = origKey;
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("respects explicitly specified model when provided", async () => {
+    const origKey = process.env.ANTHROPIC_API_KEY;
+    const origFetch = globalThis.fetch;
+    process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
+
+    let interceptedModel: string | undefined;
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      interceptedModel = body.model;
+      return new Response(
+        JSON.stringify({
+          content: [{ text: "mock anthropic reply" }],
+          usage: { input_tokens: 10, output_tokens: 20 },
+          model: body.model,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    try {
+      const res = await llm.generate([{ role: "user", content: "hello custom model" }], {
+        provider: "anthropic",
+        model: "claude-3-7-sonnet-latest",
+        useCache: false,
+      });
+
+      assert.strictEqual(res.provider, "anthropic");
+      assert.strictEqual(interceptedModel, "claude-3-7-sonnet-latest");
+    } finally {
+      process.env.ANTHROPIC_API_KEY = origKey;
+      globalThis.fetch = origFetch;
+    }
   });
 });

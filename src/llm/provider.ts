@@ -506,7 +506,7 @@ export class LLMManager {
     
     const configuredProvider = process.env.DEFAULT_LLM_PROVIDER as LLMProviderType | undefined;
     const primaryProvider = effectiveOptions.provider || configuredProvider || route.provider;
-    const model = effectiveOptions.model || (process.env.DEFAULT_LLM_MODEL) || route.model;
+    const model = effectiveOptions.model || process.env.DEFAULT_LLM_MODEL || (primaryProvider === route.provider ? route.model : undefined);
     
     const fallbackProviders = PROVIDERS
       .filter(p => p !== primaryProvider)
